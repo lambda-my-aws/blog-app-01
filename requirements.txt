@@ -1,0 +1,5 @@
+flask
+supervisor
+gunicorn
+boto3
+Werkzeug
