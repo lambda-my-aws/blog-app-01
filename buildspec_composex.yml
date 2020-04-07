@@ -1,0 +1,46 @@
+version: 0.2
+
+env:
+  variables:
+    SOURCE_DOCKER_FILE: compose.yml
+    IMAGE_BUILD_ARTIFACT_NAME: ImageBuild
+    IMAGE_INFO_FILE_NAME: build_info.yml
+  git-credential-helper: yes
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.8
+    commands:
+      - pip --version || curl -s https://bootstrap.pypa.io/get-pip.py | python
+      - git config --global user.email build@lambda-my-aws.io
+      - git config --global user.name codebuild
+      - git clone https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${DOCKER_COMPOSER_REPO}
+      - git --git-dir=${DOCKER_COMPOSER_REPO}/.git log --oneline | head -3 || echo Could not get the logs
+      - git clone https://git-codecommit.${AWS_REGION}.amazonaws.com/v1/repos/${COMPOSE_REPO_NAME}
+      - git --git-dir=${COMPOSE_REPO_NAME}/.git log --oneline | head -3 || echo could not get the logs
+      - echo $PWD && pip install -r ${DOCKER_COMPOSER_REPO}/requirements.txt
+
+  pre_build:
+    commands:
+      - export SEC_ARTIFACT=CODEBUILD_SRC_DIR_${IMAGE_BUILD_ARTIFACT_NAME}
+      - if ! [ -z ${SEC_ARTIFACT+x} ]; then export BUILD_INFO=${SEC_ARTIFACT}/build_info.yml ; else BUILD_INFO=ImageBuild/build_info.yml; fi
+      - eval IMAGE_INFO_DIR=\$$SEC_ARTIFACT
+      - export IMAGE_INFO_PATH=${IMAGE_INFO_DIR}/${IMAGE_INFO_FILE_NAME}
+      - echo ImageInfo Path ${IMAGE_INFO_PATH}
+      - cat $IMAGE_INFO_PATH
+      - export SOURCE_FILE=${COMPOSE_REPO_NAME}/${SOURCE_DOCKER_FILE}
+      - export OUTPUT_FILE=${COMPOSE_REPO_NAME}/compose.yml
+
+  build:
+    commands:
+      - python ${DOCKER_COMPOSER_REPO}/update_docker_composex.py --source-file ${SOURCE_FILE} --parameters-file ${IMAGE_INFO_PATH} --output-file ${OUTPUT_FILE}
+  post_build:
+    commands:
+      - cd ${COMPOSE_REPO_NAME} && git add -u && git commit -m "Build $CODEBUILD_BUILD_NUMBER - $CODEBUILD_BUILD_ID" && git push origin master
+
+artifacts:
+  files:
+    - compose.yml
+  name: compose-file
+  base-directory: myapps-compose

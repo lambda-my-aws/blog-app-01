@@ -1,9 +1,6 @@
 version: 0.2
 
 env:
-  variables:
-    REPO_NAME: blog-app-01
-    SERVICE_NAME: app01
   git-credential-helper: yes
 
 phases:
@@ -19,7 +16,7 @@ phases:
       - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $DKR_ACCT_URL
       - if [ -z ${CODEBUILD_BUILD_NUMBER+x} ]; then export TAG=$(date +%s); else export TAG=$CODEBUILD_BUILD_NUMBER; fi
       - echo Tag ${TAG} - Account ID $ACCOUNT_ID
-      - export TAG_URL="${DKR_ACCT_URL}/${REPO_NAME}:${TAG}"
+      - export TAG_URL="${DKR_ACCT_URL}/${ECR_REPO_NAME}:${TAG}"
   pre_build:
     commands:
       - pip --version || curl -s https://bootstrap.pypa.io/get-pip.py | python
@@ -28,9 +25,10 @@ phases:
   build:
     commands:
       - docker build -t ${TAG_URL} .
-      - docker push ${TAG_URL} && echo ${TAG_URL} > image_url.txt
-      - echo "repo_name^ ${REPO_NAME}" > build_info.yml
-      - echo "image_tag^ ${TAG}" >> build_info.yml
+      - docker push ${TAG_URL} |tee push.log && echo ${TAG_URL} > image_url.txt
+      - export IMAGE_SHA=`grep digest push.log | awk '{print $3}'`
+      - echo "repo_name^ ${ECR_REPO_NAME}" > build_info.yml
+      - echo "image_tag^ ${IMAGE_SHA}" >> build_info.yml
       - echo "service_name^ ${SERVICE_NAME}" >> build_info.yml
       - sed 's/\^/\:/g' -i build_info.yml
 
